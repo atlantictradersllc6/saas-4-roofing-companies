@@ -2,15 +2,23 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
-import { loginWithPassword, loginWithGoogle, loginWithGitHub } from "@/app/login/actions";
+import {
+  loginWithPassword,
+  loginWithGoogle,
+  loginWithGitHub,
+  loginWithEmail,
+} from "@/app/login/actions";
 import { IconRoof } from "./icons";
 
 export default function LoginForm({
   oauth,
+  emailLink,
 }: {
   oauth: { google: boolean; github: boolean };
+  emailLink: boolean;
 }) {
   const [state, formAction, pending] = useActionState(loginWithPassword, {});
+  const [magic, magicAction, magicPending] = useActionState(loginWithEmail, {});
 
   return (
     <div className="login-wrap">
@@ -51,6 +59,27 @@ export default function LoginForm({
             {pending ? "Signing in…" : "Sign in"}
           </button>
         </form>
+
+        {emailLink && (
+          <>
+            <div className="or-divider" style={{ margin: "16px 0" }}><span>or get a magic link</span></div>
+            {magic.sent ? (
+              <div className="note-box" style={{ color: "var(--good)", textAlign: "center" }}>
+                Check your inbox for a sign-in link.
+              </div>
+            ) : (
+              <form action={magicAction}>
+                <input className="input" type="email" name="magicEmail" placeholder="you@company.com" required autoComplete="email" />
+                {magic.error && (
+                  <div style={{ color: "var(--bad)", fontSize: 13, marginBottom: 12 }}>{magic.error}</div>
+                )}
+                <button className="btn block" type="submit" disabled={magicPending}>
+                  {magicPending ? "Sending…" : "Email me a sign-in link"}
+                </button>
+              </form>
+            )}
+          </>
+        )}
 
         <p style={{ marginTop: 18, marginBottom: 0 }}>
           No account? <Link href="/signup" style={{ color: "var(--clay-ink)", fontWeight: 600 }}>Create one</Link>

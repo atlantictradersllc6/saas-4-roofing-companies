@@ -23,6 +23,24 @@ export async function loginWithPassword(
   }
 }
 
+export type MagicState = { error?: string; sent?: boolean };
+
+export async function loginWithEmail(
+  _prev: MagicState,
+  formData: FormData,
+): Promise<MagicState> {
+  const email = String(formData.get("magicEmail") ?? "").toLowerCase().trim();
+  if (!email) return { error: "Enter your email." };
+  try {
+    // Sends the sign-in link and redirects to the "check your email" page.
+    await signIn("resend", { email, redirectTo: "/dashboard" });
+    return { sent: true };
+  } catch (err) {
+    if (err instanceof AuthError) return { error: "Could not send the sign-in link." };
+    throw err;
+  }
+}
+
 export async function loginWithGoogle() {
   await signIn("google", { redirectTo: "/dashboard" });
 }
