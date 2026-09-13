@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { sql, isDbConfigured } from "@/lib/db";
+import { currentCompanyId } from "@/lib/tenant";
 import { addPreviewInvoice } from "@/lib/preview-store";
 import { getInvoices } from "@/lib/queries";
 import { nextRef } from "@/lib/format";
@@ -26,33 +27,20 @@ export async function createInvoice(
   if (!customer) return { ok: false, error: "Customer is required." };
   if (amount <= 0) return { ok: false, error: "Amount must be greater than 0." };
 
-  // A paid invoice has no balance; anything else is owed in full to start.
   const balance = status === "paid" ? 0 : amount;
-
-  // Reuse the query layer so the next number is derived the same way in both
-  // preview and connected modes.
-  const ref = nextRef(
-    (await getInvoices()).map((i) => i.ref),
-    "INV",
-    2092,
-  );
+  // getInvoices() is already company-scoped, so the next number is per-company.
+  const ref = nextRef((await getInvoices()).map((i) => i.ref), "INV", 2092);
 
   if (isDbConfigured() && sql) {
+    const companyId = await currentCompanyId();
+    if (!companyId) return { ok: false, error: "Not signed in." };
     await sql`
-      insert into invoices (ref, customer, sub, job, amount, balance, due, status)
-      values (${ref}, ${customer}, ${sub}, ${job}, ${amount}, ${balance}, ${due}, ${status})
+      insert into invoices (company_id, ref, customer, sub, job, amount, balance, due, status)
+      values (${companyId}, ${ref}, ${customer}, ${sub}, ${job}, ${amount}, ${balance}, ${due}, ${status})
     `;
   } else {
     addPreviewInvoice({
-      id: `local-${Date.now()}`,
-      ref,
-      customer,
-      sub,
-      job,
-      amount,
-      balance,
-      due,
-      status,
+      id: `local-${Date.now()}`, ref, customer, sub, job, amount, balance, due, status,
     });
   }
 

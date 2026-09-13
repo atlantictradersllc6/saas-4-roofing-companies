@@ -1,4 +1,5 @@
 import { sql, isDbConfigured, num } from "./db";
+import { currentCompanyId } from "./tenant";
 import {
   getPreviewLeads,
   getPreviewInvoices,
@@ -17,21 +18,20 @@ import type {
 /**
  * The data layer. Every page calls these — never the database directly.
  *
- * The pattern to notice: each function checks `isDbConfigured()`.
- *   • No DATABASE_URL → return the in-memory preview data (fully populated UI).
- *   • DATABASE_URL set → query Neon Postgres.
- *
- * Because pages only see the return value, connecting Neon is just setting one
- * env var — no page changes. That's `useDatabase ? realData : sampleData`,
- * centralised here.
+ * Two switches:
+ *   1. No DATABASE_URL → in-memory preview data (local dev without a DB).
+ *   2. DB configured → query Neon, ALWAYS scoped to the signed-in user's
+ *      company (multi-tenancy). No company in session → empty result.
  */
 
 export async function getLeads(): Promise<Lead[]> {
   if (!isDbConfigured() || !sql) return getPreviewLeads();
+  const companyId = await currentCompanyId();
+  if (!companyId) return [];
 
   const rows = await sql`
     select id, name, address, value, stage, source, phone, scope, notes
-    from leads
+    from leads where company_id = ${companyId}
     order by value desc
   `;
   return rows.map((r) => ({ ...r, value: num(r.value) })) as Lead[];
@@ -39,19 +39,22 @@ export async function getLeads(): Promise<Lead[]> {
 
 export async function getEstimates(): Promise<Estimate[]> {
   if (!isDbConfigured() || !sql) return getPreviewEstimates();
+  const companyId = await currentCompanyId();
+  if (!companyId) return [];
 
   const estimates = await sql`
     select id, ref, name, address, date, status, squares, pitch, layers, waste
-    from estimates
+    from estimates where company_id = ${companyId}
     order by created_at desc
   `;
   const lines = await sql`
-    select estimate_id, description, qty, rate, amount
-    from estimate_lines
-    order by position asc
+    select el.estimate_id, el.description, el.qty, el.rate, el.amount
+    from estimate_lines el
+    join estimates e on e.id = el.estimate_id
+    where e.company_id = ${companyId}
+    order by el.position asc
   `;
 
-  // Group lines under their estimate (one pass, no N+1 queries).
   const byEstimate = new Map<string, EstimateLine[]>();
   for (const l of lines) {
     const list = byEstimate.get(l.estimate_id) ?? [];
@@ -74,10 +77,12 @@ export async function getEstimates(): Promise<Estimate[]> {
 
 export async function getInvoices(): Promise<Invoice[]> {
   if (!isDbConfigured() || !sql) return getPreviewInvoices();
+  const companyId = await currentCompanyId();
+  if (!companyId) return [];
 
   const rows = await sql`
     select id, ref, customer, sub, job, amount, balance, due, status
-    from invoices
+    from invoices where company_id = ${companyId}
   `;
   return rows.map((r) => ({
     ...r,
@@ -88,18 +93,23 @@ export async function getInvoices(): Promise<Invoice[]> {
 
 export async function getJobs(): Promise<ScheduledJob[]> {
   if (!isDbConfigured() || !sql) return SAMPLE_JOBS;
+  const companyId = await currentCompanyId();
+  if (!companyId) return [];
 
-  // Alias snake_case columns to the camelCase our types use.
   const rows = await sql`
     select id, crew_index as "crewIndex", day_index as "dayIndex", name, meta, type
-    from scheduled_jobs
+    from scheduled_jobs where company_id = ${companyId}
   `;
   return rows as ScheduledJob[];
 }
 
 export async function getCrews(): Promise<Crew[]> {
   if (!isDbConfigured() || !sql) return SAMPLE_CREWS;
+  const companyId = await currentCompanyId();
+  if (!companyId) return [];
 
-  const rows = await sql`select id, name, lead, detail from crews`;
+  const rows = await sql`
+    select id, name, lead, detail from crews where company_id = ${companyId}
+  `;
   return rows as Crew[];
 }

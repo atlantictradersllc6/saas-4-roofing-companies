@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { sql, isDbConfigured } from "@/lib/db";
+import { currentCompanyId } from "@/lib/tenant";
 import {
   addPreviewEstimate,
   updatePreviewEstimateLines,
@@ -30,35 +31,21 @@ export async function createEstimate(
   if (!name) return { ok: false, error: "Project / customer name is required." };
 
   const date = new Date().toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
+    month: "short", day: "numeric", year: "numeric",
   });
-  const ref = nextRef(
-    (await getEstimates()).map((e) => e.ref),
-    "EST",
-    1046,
-  );
+  const ref = nextRef((await getEstimates()).map((e) => e.ref), "EST", 1046);
 
   if (isDbConfigured() && sql) {
-    // Insert the header only; line items are added afterward in the builder.
+    const companyId = await currentCompanyId();
+    if (!companyId) return { ok: false, error: "Not signed in." };
     await sql`
-      insert into estimates (ref, name, address, date, status, squares, pitch, layers, waste)
-      values (${ref}, ${name}, ${address}, ${date}, ${status}, ${squares}, ${pitch}, ${layers}, ${waste})
+      insert into estimates (company_id, ref, name, address, date, status, squares, pitch, layers, waste)
+      values (${companyId}, ${ref}, ${name}, ${address}, ${date}, ${status}, ${squares}, ${pitch}, ${layers}, ${waste})
     `;
   } else {
     addPreviewEstimate({
-      id: `local-${Date.now()}`,
-      ref,
-      name,
-      address,
-      date,
-      status,
-      squares,
-      pitch,
-      layers,
-      waste,
-      lines: [],
+      id: `local-${Date.now()}`, ref, name, address, date, status,
+      squares, pitch, layers, waste, lines: [],
     });
   }
 
@@ -68,19 +55,12 @@ export async function createEstimate(
 
 export type SaveLinesResult = { ok: boolean; error?: string };
 
-/**
- * Persist the full set of line items for one estimate. Called from the builder
- * with the current lines array (structured args, not FormData — Server Actions
- * serialize arguments for you). We replace the estimate's lines wholesale:
- * simplest correct strategy for an editable list of this size.
- */
 export async function saveEstimateLines(
   estimateId: string,
   lines: EstimateLine[],
 ): Promise<SaveLinesResult> {
   if (!estimateId) return { ok: false, error: "Missing estimate id." };
 
-  // Sanitize on the server — never trust the shape the client sent.
   const clean: EstimateLine[] = lines.map((l) => ({
     description: String(l.description ?? "").trim() || "Untitled item",
     qty: String(l.qty ?? "").trim(),
@@ -89,7 +69,14 @@ export async function saveEstimateLines(
   }));
 
   if (isDbConfigured() && sql) {
-    // Replace: delete the old rows, insert the new ones in order.
+    const companyId = await currentCompanyId();
+    if (!companyId) return { ok: false, error: "Not signed in." };
+    // Verify the estimate belongs to this company before touching its lines.
+    const owns = await sql`
+      select 1 from estimates where id = ${estimateId} and company_id = ${companyId} limit 1
+    `;
+    if (!owns[0]) return { ok: false, error: "Estimate not found." };
+
     await sql`delete from estimate_lines where estimate_id = ${estimateId}`;
     for (let position = 0; position < clean.length; position++) {
       const l = clean[position];

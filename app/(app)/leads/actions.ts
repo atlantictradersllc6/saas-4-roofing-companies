@@ -2,13 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { sql, isDbConfigured } from "@/lib/db";
+import { currentCompanyId } from "@/lib/tenant";
 import { addPreviewLead, updatePreviewLeadStage } from "@/lib/preview-store";
 import type { LeadStage } from "@/lib/types";
 
 /**
- * Server Actions — run ON THE SERVER. This is how Next.js writes data: no API
- * route to hand-write, no fetch from the browser. Each action persists to Neon
- * when DATABASE_URL is set, otherwise to the in-memory preview store.
+ * Server Actions — run ON THE SERVER. Writes persist to Neon (scoped to the
+ * signed-in user's company) when DATABASE_URL is set, else to the in-memory
+ * preview store.
  */
 
 export type LeadFormState = { ok: boolean; error?: string };
@@ -29,26 +30,19 @@ export async function createLead(
   const scope = String(formData.get("scope") ?? "").trim();
   const notes = String(formData.get("notes") ?? "").trim();
 
-  // Validate on the server — a client can bypass the browser's `required`.
   if (!name) return { ok: false, error: "Customer name is required." };
   if (!address) return { ok: false, error: "Address is required." };
 
   if (isDbConfigured() && sql) {
+    const companyId = await currentCompanyId();
+    if (!companyId) return { ok: false, error: "Not signed in." };
     await sql`
-      insert into leads (name, address, value, stage, source, phone, scope, notes)
-      values (${name}, ${address}, ${value}, ${stage}, ${source}, ${phone}, ${scope}, ${notes})
+      insert into leads (company_id, name, address, value, stage, source, phone, scope, notes)
+      values (${companyId}, ${name}, ${address}, ${value}, ${stage}, ${source}, ${phone}, ${scope}, ${notes})
     `;
   } else {
     addPreviewLead({
-      id: `local-${Date.now()}`,
-      name,
-      address,
-      value,
-      stage,
-      source,
-      phone,
-      scope,
-      notes,
+      id: `local-${Date.now()}`, name, address, value, stage, source, phone, scope, notes,
     });
   }
 
@@ -59,11 +53,6 @@ export async function createLead(
 
 export type StageResult = { ok: boolean; error?: string };
 
-/**
- * Move a lead to a new pipeline stage. Called when a card is dropped on a
- * column. The board updates optimistically (React's useOptimistic), so this
- * just persists the change and revalidates.
- */
 export async function updateLeadStage(
   leadId: string,
   stage: LeadStage,
@@ -72,7 +61,13 @@ export async function updateLeadStage(
   if (!STAGES.includes(stage)) return { ok: false, error: "Invalid stage." };
 
   if (isDbConfigured() && sql) {
-    await sql`update leads set stage = ${stage} where id = ${leadId}`;
+    const companyId = await currentCompanyId();
+    if (!companyId) return { ok: false, error: "Not signed in." };
+    // The company_id guard makes it impossible to move another tenant's lead.
+    await sql`
+      update leads set stage = ${stage}
+      where id = ${leadId} and company_id = ${companyId}
+    `;
   } else {
     const ok = updatePreviewLeadStage(leadId, stage);
     if (!ok) return { ok: false, error: "Lead not found." };
