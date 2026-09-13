@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import type { Estimate, EstimateLine, EstimateStatus } from "@/lib/types";
 import { money } from "@/lib/format";
-import { saveEstimateLines } from "@/app/(app)/estimates/actions";
+import { saveEstimateLines, sendProposal } from "@/app/(app)/estimates/actions";
 import { IconSend, IconPlus, IconClose } from "./icons";
 
 const STATUS_PILL: Record<EstimateStatus, [string, string]> = {
@@ -28,6 +28,10 @@ export default function EstimateBuilder({
   const [saved, setSaved] = useState(false); // brief "Saved ✓" confirmation
   const [isSaving, startSaving] = useTransition();
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sendEmail, setSendEmail] = useState("");
+  const [isSending, startSending] = useTransition();
+  const [sendMsg, setSendMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const active = estimates.find((e) => e.id === activeId)!;
 
@@ -77,11 +81,34 @@ export default function EstimateBuilder({
     });
   };
 
+  const doSend = () => {
+    setSendMsg(null);
+    startSending(async () => {
+      const res = await sendProposal(activeId, sendEmail);
+      if (res.ok) {
+        setSendOpen(false);
+        setSendMsg({ ok: true, text: `Proposal ${active.ref} emailed to ${sendEmail}.` });
+        setSendEmail("");
+        setTimeout(() => setSendMsg(null), 4000);
+      } else {
+        setSendMsg({ ok: false, text: res.error ?? "Could not send." });
+      }
+    });
+  };
+
   const { subtotal, tax, total } = useMemo(() => {
     const subtotal = lines.reduce((a, l) => a + (l.amount || 0), 0);
     const tax = Math.round(subtotal * TAX_RATE);
     return { subtotal, tax, total: subtotal + tax };
   }, [lines]);
+
+  if (estimates.length === 0 || !active) {
+    return (
+      <div className="card" style={{ padding: "48px 24px", textAlign: "center", color: "var(--muted)" }}>
+        No estimates yet — click <b>New estimate</b> to create your first one.
+      </div>
+    );
+  }
 
   return (
     <div className="est-layout">
@@ -287,7 +314,10 @@ export default function EstimateBuilder({
             alignItems: "center",
           }}
         >
-          <button className="btn primary">
+          <button
+            className="btn primary"
+            onClick={() => { setSendMsg(null); setSendOpen(true); }}
+          >
             <IconSend />
             Send proposal
           </button>
@@ -298,7 +328,6 @@ export default function EstimateBuilder({
           >
             {isSaving ? "Saving…" : saved ? "Saved ✓" : "Save line items"}
           </button>
-          <button className="btn">PDF</button>
           {dirty && !isSaving && (
             <span style={{ fontSize: 12, color: "var(--warn)", fontWeight: 600 }}>
               Unsaved changes
@@ -307,8 +336,61 @@ export default function EstimateBuilder({
           {saveError && (
             <span style={{ fontSize: 12, color: "var(--bad)" }}>{saveError}</span>
           )}
+          {sendMsg && (
+            <span style={{ fontSize: 12, color: sendMsg.ok ? "var(--good)" : "var(--bad)", fontWeight: 600 }}>
+              {sendMsg.text}
+            </span>
+          )}
         </div>
       </div>
+
+      {sendOpen && (
+        <div className="modal-scrim" onClick={() => setSendOpen(false)}>
+          <div
+            className="modal-card"
+            role="dialog"
+            aria-label="Send proposal"
+            style={{ maxWidth: 460 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-head">
+              <h2>Send proposal</h2>
+              <button className="icon-btn" onClick={() => setSendOpen(false)} aria-label="Close">
+                <IconClose />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="page-sub" style={{ marginTop: 0 }}>
+                Email a PDF of <b>{active.ref} — {active.name}</b> to your customer.
+                The estimate will be marked <b>Sent</b>.
+              </p>
+              <div className="form-row full">
+                <label htmlFor="send-email">Customer email</label>
+                <input
+                  id="send-email"
+                  className="input"
+                  type="email"
+                  placeholder="customer@example.com"
+                  value={sendEmail}
+                  onChange={(e) => setSendEmail(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="modal-foot">
+              {sendMsg && !sendMsg.ok && (
+                <span className="form-error">{sendMsg.text}</span>
+              )}
+              <button className="btn" onClick={() => setSendOpen(false)} disabled={isSending}>
+                Cancel
+              </button>
+              <button className="btn primary" onClick={doSend} disabled={isSending}>
+                {isSending ? "Sending…" : "Send proposal"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
