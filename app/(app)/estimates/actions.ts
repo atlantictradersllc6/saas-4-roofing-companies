@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { sql, isDbConfigured } from "@/lib/db";
 import { currentCompanyId } from "@/lib/tenant";
+import { auth } from "@/auth";
 import {
   addPreviewEstimate,
   updatePreviewEstimateLines,
@@ -132,10 +133,14 @@ export async function sendProposal(
   const subtotal = est.lines.reduce((a, l) => a + l.amount, 0);
   const total = subtotal + Math.round(subtotal * 0.0825);
 
+  // So homeowner replies go to the roofer, not the no-reply sender.
+  const replyTo = (await auth())?.user?.email ?? undefined;
+
   const resend = new Resend(process.env.AUTH_RESEND_KEY);
   const { error } = await resend.emails.send({
     from: process.env.PROPOSAL_FROM || "Ridgeline <onboarding@resend.dev>",
     to: [email],
+    replyTo,
     subject: `Roofing proposal ${est.ref} from ${companyName}`,
     html:
       `<div style="font-family:system-ui,sans-serif;font-size:14px;line-height:1.5;color:#1b1e23">` +
