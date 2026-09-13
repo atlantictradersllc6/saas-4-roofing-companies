@@ -1,8 +1,8 @@
 import Topbar from "@/components/Topbar";
 import ScheduleGrid from "@/components/ScheduleGrid";
+import NewJobButton from "@/components/NewJobButton";
 import { getCrews, getJobs } from "@/lib/queries";
 import { SCHEDULE_DAYS } from "@/lib/sample-data";
-import { IconPlus } from "@/components/icons";
 
 // Always render on request so the page reflects the live database.
 export const dynamic = "force-dynamic";
@@ -21,10 +21,7 @@ export default async function SchedulePage() {
               Week of Sep 8 – 13 · click a job for details
             </div>
           </div>
-          <button className="btn primary">
-            <IconPlus />
-            Book job
-          </button>
+          <NewJobButton crews={crews} days={SCHEDULE_DAYS} />
         </div>
         <ScheduleGrid crews={crews} jobs={jobs} days={SCHEDULE_DAYS} />
       </div>

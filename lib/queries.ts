@@ -4,8 +4,9 @@ import {
   getPreviewLeads,
   getPreviewInvoices,
   getPreviewEstimates,
+  getPreviewJobs,
 } from "./preview-store";
-import { SAMPLE_JOBS, SAMPLE_CREWS } from "./sample-data";
+import { SAMPLE_CREWS } from "./sample-data";
 import type {
   Lead,
   Estimate,
@@ -92,7 +93,7 @@ export async function getInvoices(): Promise<Invoice[]> {
 }
 
 export async function getJobs(): Promise<ScheduledJob[]> {
-  if (!isDbConfigured() || !sql) return SAMPLE_JOBS;
+  if (!isDbConfigured() || !sql) return getPreviewJobs();
   const companyId = await currentCompanyId();
   if (!companyId) return [];
 

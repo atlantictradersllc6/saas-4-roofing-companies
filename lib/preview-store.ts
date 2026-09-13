@@ -1,10 +1,16 @@
-import { SAMPLE_LEADS, SAMPLE_INVOICES, SAMPLE_ESTIMATES } from "./sample-data";
+import {
+  SAMPLE_LEADS,
+  SAMPLE_INVOICES,
+  SAMPLE_ESTIMATES,
+  SAMPLE_JOBS,
+} from "./sample-data";
 import type {
   Lead,
   LeadStage,
   Invoice,
   Estimate,
   EstimateLine,
+  ScheduledJob,
 } from "./types";
 
 /**
@@ -22,6 +28,7 @@ type Store = {
   leads?: Lead[];
   invoices?: Invoice[];
   estimates?: Estimate[];
+  jobs?: ScheduledJob[];
 };
 const g = globalThis as unknown as { __ridgeline?: Store };
 if (!g.__ridgeline) g.__ridgeline = {};
@@ -34,6 +41,7 @@ if (!store.estimates)
     ...e,
     lines: e.lines.map((l) => ({ ...l })),
   }));
+if (!store.jobs) store.jobs = SAMPLE_JOBS.map((j) => ({ ...j }));
 
 // ---------- leads ----------
 export const getPreviewLeads = (): Lead[] => store.leads!;
@@ -55,6 +63,10 @@ export const addPreviewInvoice = (inv: Invoice) => store.invoices!.unshift(inv);
 export const getPreviewEstimates = (): Estimate[] => store.estimates!;
 export const addPreviewEstimate = (est: Estimate) =>
   store.estimates!.unshift(est);
+
+// ---------- scheduled jobs ----------
+export const getPreviewJobs = (): ScheduledJob[] => store.jobs!;
+export const addPreviewJob = (job: ScheduledJob) => store.jobs!.push(job);
 
 /** Replace one estimate's line items. Returns false if the estimate is gone. */
 export function updatePreviewEstimateLines(
