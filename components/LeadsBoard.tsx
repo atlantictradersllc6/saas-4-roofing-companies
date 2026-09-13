@@ -4,6 +4,7 @@ import { useOptimistic, useRef, useState, useTransition } from "react";
 import type { Lead, LeadStage } from "@/lib/types";
 import { money, moneyK } from "@/lib/format";
 import { updateLeadStage } from "@/app/(app)/leads/actions";
+import { createEstimateFromLead } from "@/app/(app)/estimates/actions";
 import { IconClose, IconPhone } from "./icons";
 
 const STAGES: { key: LeadStage; name: string; color: string }[] = [
@@ -17,6 +18,7 @@ const STAGES: { key: LeadStage; name: string; color: string }[] = [
 export default function LeadsBoard({ leads }: { leads: Lead[] }) {
   const [active, setActive] = useState<Lead | null>(null);
   const [, startTransition] = useTransition();
+  const [building, startBuilding] = useTransition();
 
   // Optimistic list: when a card is dropped, we reflect the move immediately;
   // the Server Action persists it and the revalidated data replaces this.
@@ -186,8 +188,17 @@ export default function LeadsBoard({ leads }: { leads: Lead[] }) {
               </div>
             </div>
             <div className="drawer-foot">
-              <button className="btn primary" style={{ flex: 1 }}>
-                Build estimate
+              <button
+                className="btn primary"
+                style={{ flex: 1 }}
+                disabled={building}
+                onClick={() =>
+                  startBuilding(async () => {
+                    await createEstimateFromLead(active.name, active.address, active.scope);
+                  })
+                }
+              >
+                {building ? "Building…" : "Build estimate"}
               </button>
               <button className="btn">
                 <IconPhone />

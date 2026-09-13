@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { sql, isDbConfigured } from "@/lib/db";
 import { currentCompanyId } from "@/lib/tenant";
 import {
@@ -152,4 +153,47 @@ export async function sendProposal(
   }
   revalidatePath("/estimates");
   return { ok: true };
+}
+
+export type BuildResult = { ok: boolean; error?: string };
+
+/**
+ * Create a draft estimate prefilled from a lead, then jump to the builder.
+ * Parses "squares" and "pitch" out of the lead's free-text scope
+ * (e.g. "Full replacement · 34 sq · 8/12") so the header is pre-populated.
+ */
+export async function createEstimateFromLead(
+  name: string,
+  address: string,
+  scope: string,
+): Promise<BuildResult> {
+  const cleanName = String(name ?? "").trim();
+  if (!cleanName) return { ok: false, error: "Missing lead." };
+
+  const sqMatch = String(scope ?? "").match(/(\d+)\s*sq/i);
+  const pitchMatch = String(scope ?? "").match(/(\d+\/\d+)/);
+  const squares = sqMatch ? Number(sqMatch[1]) : 0;
+  const pitch = pitchMatch ? pitchMatch[1] : "6/12";
+
+  const date = new Date().toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+  });
+  const ref = nextRef((await getEstimates()).map((e) => e.ref), "EST", 1046);
+
+  if (isDbConfigured() && sql) {
+    const companyId = await currentCompanyId();
+    if (!companyId) return { ok: false, error: "Not signed in." };
+    await sql`
+      insert into estimates (company_id, ref, name, address, date, status, squares, pitch, layers, waste)
+      values (${companyId}, ${ref}, ${cleanName}, ${address ?? ""}, ${date}, 'draft', ${squares}, ${pitch}, 1, '12%')
+    `;
+  } else {
+    addPreviewEstimate({
+      id: `local-${Date.now()}`, ref, name: cleanName, address: address ?? "",
+      date, status: "draft", squares, pitch, layers: 1, waste: "12%", lines: [],
+    });
+  }
+
+  revalidatePath("/estimates");
+  redirect("/estimates"); // newest estimate is auto-selected in the builder
 }
