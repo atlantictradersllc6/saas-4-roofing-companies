@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { IconSearch, IconSun, IconMoon } from "./icons";
+import { IconSun, IconMoon } from "./icons";
+import SearchBox from "./SearchBox";
 
 export default function Topbar({
   title,
@@ -44,10 +45,7 @@ export default function Topbar({
         <div className="page-title">{title}</div>
         <div className="page-sub">{subtitle}</div>
       </div>
-      <div className="search">
-        <IconSearch />
-        Search jobs, customers…
-      </div>
+      <SearchBox />
       <button
         className="icon-btn"
         onClick={toggle}
